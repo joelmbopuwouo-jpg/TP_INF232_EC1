@@ -1147,6 +1147,63 @@ def stats_svg():
     return resp
     
 
+@app.route('/stats_pie.svg')
+def stats_pie_svg():
+    # catégories des produits vendus -> pourcentages
+    from collections import Counter
+    produits = Produit.query.filter_by(supprime=False).all()
+    sold_ids = set(f.produit_id for f in Facture.query.all())
+    cat_counts = Counter()
+    total_sold = 0
+    for p in produits:
+        if p.id in sold_ids:
+            cat_counts[p.categorie or 'Autre'] += 1
+            total_sold += 1
+
+    if total_sold == 0:
+        svg = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"><text x="10" y="20">Pas de ventes enregistr\u00e9es</text></svg>'
+        return Response(svg, mimetype='image/svg+xml')
+
+    # calcul des arcs
+    import math
+    cx, cy, r = 150, 100, 80
+    start_angle = 0.0
+    colors = ['#4caf50','#2196f3','#ff9800','#9c27b0','#f44336','#03a9f4','#8bc34a']
+    parts = []
+    legend = []
+    i = 0
+    for cat, cnt in cat_counts.items():
+        frac = cnt / total_sold
+        angle = frac * 360.0
+        end_angle = start_angle + angle
+        x1 = cx + r * math.cos(math.radians(start_angle))
+        y1 = cy + r * math.sin(math.radians(start_angle))
+        x2 = cx + r * math.cos(math.radians(end_angle))
+        y2 = cy + r * math.sin(math.radians(end_angle))
+        large = 1 if angle > 180 else 0
+        path = f'M {cx},{cy} L {x1:.2f},{y1:.2f} A {r},{r} 0 {large},1 {x2:.2f},{y2:.2f} Z'
+        color = colors[i % len(colors)]
+        parts.append(f'<path d="{path}" fill="{color}" stroke="#fff"/>')
+        legend.append((color, f"{cat} ({int(frac*100)}%)"))
+        start_angle = end_angle
+        i += 1
+
+    svg_parts = [f'<svg xmlns="http://www.w3.org/2000/svg" width="500" height="240">']
+    svg_parts.append('<g>')
+    svg_parts.extend(parts)
+    svg_parts.append('</g>')
+    # legend
+    lx = 320
+    ly = 40
+    for idx, (color, label) in enumerate(legend):
+        svg_parts.append(f'<rect x="{lx}" y="{ly + idx*20 -10}" width="12" height="12" fill="{color}" />')
+        svg_parts.append(f'<text x="{lx+18}" y="{ly + idx*20}" font-size="12">{label}</text>')
+
+    svg_parts.append('</svg>')
+    svg = '\n'.join(svg_parts)
+    return Response(svg, mimetype='image/svg+xml')
+    
+
 
 @app.route('/analyse')
 def analyse():
